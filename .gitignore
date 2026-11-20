@@ -1,48 +1,7 @@
-# Node
 node_modules/
-npm-debug.log
-yarn-error.log
-
-# Logs
-logs
-*.log
-*.log.*
-
-# Environment
+coverage/
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Editor
-.vscode/
-.idea/
-
-# Sistema
-.DS_Store
-Thumbs.db
-# Node
-node_modules/
-npm-debug.log
-yarn-error.log
-
-# Logs
-logs
+.env.*
+!.env.example
 *.log
-*.log.*
-
-# Environment
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Editor
-.vscode/
-.idea/
-
-# Sistema
 .DS_Store
-Thumbs.db
