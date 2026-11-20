@@ -1,0 +1,10 @@
+services:
+  api:
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      PORT: 3000
+      TRACKING_PROVIDER: ${TRACKING_PROVIDER:-mock}
+      AFTERSHIP_API_KEY: ${AFTERSHIP_API_KEY:-}
+    restart: unless-stopped

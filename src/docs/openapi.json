@@ -1,0 +1,247 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API de Rastreamento de Encomendas",
+    "version": "2.0.0",
+    "description": "Consulta de rastreio com validação do código (padrão S10 dos Correios), provedores plugáveis (mock ou AfterShip), cache e consulta em lote."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Sistema"],
+        "summary": "Status e provedor ativo",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/rastreio/{codigo}": {
+      "get": {
+        "tags": ["Rastreio"],
+        "summary": "Consulta um objeto",
+        "parameters": [
+          {
+            "name": "codigo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "AA123456785BR"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (header X-Cache: HIT ou MISS)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rastreio"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Erro",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Erro",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Erro",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Erro",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rastreio/{codigo}/validar": {
+      "get": {
+        "tags": ["Rastreio"],
+        "summary": "Valida o formato e o dígito verificador sem consultar",
+        "parameters": [
+          {
+            "name": "codigo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "AA123456785BR"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/rastreio/lote": {
+      "post": {
+        "tags": ["Rastreio"],
+        "summary": "Consulta até 20 códigos em paralelo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["codigos"],
+                "properties": {
+                  "codigos": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": ["AA123456785BR", "QB473629155BR"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultados individuais (sucesso ou erro por código)"
+          },
+          "400": {
+            "description": "Erro",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Evento": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "local": {
+            "type": "string",
+            "example": "Recife/PE"
+          },
+          "status": {
+            "type": "string",
+            "example": "em_transito"
+          },
+          "descricao": {
+            "type": "string"
+          }
+        }
+      },
+      "Rastreio": {
+        "type": "object",
+        "properties": {
+          "codigo": {
+            "type": "string"
+          },
+          "transportadora": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "postado",
+              "em_transito",
+              "saiu_para_entrega",
+              "tentativa_falhou",
+              "aguardando_retirada",
+              "entregue",
+              "excecao",
+              "expirado",
+              "pendente",
+              "sem_informacoes"
+            ]
+          },
+          "descricao": {
+            "type": "string"
+          },
+          "entregue": {
+            "type": "boolean"
+          },
+          "ultimaAtualizacao": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "eventos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evento"
+            }
+          }
+        }
+      },
+      "Erro": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "campo": {
+                  "type": "string"
+                },
+                "mensagem": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
