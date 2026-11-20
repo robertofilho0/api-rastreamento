@@ -4,7 +4,42 @@ services:
     ports:
       - '3000:3000'
     environment:
-      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rastreio
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       TRACKING_PROVIDER: ${TRACKING_PROVIDER:-mock}
       AFTERSHIP_API_KEY: ${AFTERSHIP_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rastreio
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - '5672:5672'
+      - '15672:15672' # painel: http://localhost:15672 (guest/guest)
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+volumes:
+  pg-data:

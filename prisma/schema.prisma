@@ -1,0 +1,48 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+/// Consulta em lote processada de forma assíncrona por um worker (RabbitMQ)
+model TrackingJob {
+  id         String            @id @default(uuid()) @db.Uuid
+  status     JobStatus         @default(PENDING)
+  total      Int
+  processed  Int               @default(0)
+  succeeded  Int               @default(0)
+  createdAt  DateTime          @default(now()) @map("created_at")
+  startedAt  DateTime?         @map("started_at")
+  finishedAt DateTime?         @map("finished_at")
+  items      TrackingJobItem[]
+
+  @@index([status])
+  @@map("tracking_jobs")
+}
+
+model TrackingJobItem {
+  id          String      @id @default(uuid()) @db.Uuid
+  jobId       String      @map("job_id") @db.Uuid
+  position    Int
+  code        String      @db.VarChar(13)
+  success     Boolean?
+  error       String?     @db.VarChar(300)
+  result      Json?
+  processedAt DateTime?   @map("processed_at")
+  job         TrackingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, code])
+  @@index([jobId, position])
+  @@map("tracking_job_items")
+}
