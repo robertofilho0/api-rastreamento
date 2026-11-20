@@ -50,7 +50,7 @@ describe('AfterShipTrackingProvider', () => {
         'as-api-key'
       ],
     ).toBe('chave-de-teste');
-    expect(String(fetchMock.mock.calls[1][0])).toMatch(
+    expect(fetchMock.mock.calls[1][0] as string).toMatch(
       /\/trackings\/brazil-correios\/AA123456785BR$/,
     );
     expect(dados).toEqual({
