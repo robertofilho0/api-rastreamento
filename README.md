@@ -1,111 +1,149 @@
-# 📦 API de Rastreamento de Encomendas - Node.js + Express
+# 📦 API de Rastreamento de Encomendas
 
-API para rastrear encomendas de diferentes transportadoras, permitindo consultar o status atual, histórico de movimentações e últimas atualizações.  
-O projeto tem como objetivo demonstrar **integração com APIs externas de rastreamento** (ex: Correios, AfterShip, Melhor Envio), além de boas práticas no desenvolvimento de APIs REST.
+[![CI](https://github.com/robertofilho0/api-rastreamento/actions/workflows/ci.yml/badge.svg)](https://github.com/robertofilho0/api-rastreamento/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white)
+![Express](https://img.shields.io/badge/express-5-000000?logo=express)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-## 📌 Ajustes e melhorias
-O projeto ainda está em desenvolvimento e as próximas atualizações serão voltadas para as seguintes tarefas:
+API REST para rastrear encomendas com **validação do código no padrão S10 dos Correios** (incluindo o dígito verificador), **provedores plugáveis**, **cache em memória** e **consulta em lote**.
 
-- [x] Estrutura inicial da API com **Node.js + Express**  
-- [x] Endpoint de rastreamento com mock (dados fictícios)  
-- [ ] Integração real com APIs externas (**Correios**, **AfterShip** ou **Melhor Envio**)  
-- [ ] Persistência em banco de dados (**MongoDB**) para histórico  
-- [ ] Autenticação via **JWT**  
-- [ ] Documentação com Swagger/OpenAPI  
-- [ ] Testes automatizados  
+## ✨ Funcionalidades
 
----
+- **Validação real do código de rastreio**: formato `AA123456785BR` e cálculo do dígito verificador (pesos 8-6-4-2-3-5-9-7, módulo 11). Códigos inválidos são barrados antes de qualquer chamada externa.
+- **Provedores plugáveis** (padrão _Strategy_):
+  - `mock` (padrão): histórico simulado e **determinístico**, ideal para desenvolvimento e demonstrações
+  - `aftership`: integração real com a [AfterShip](https://www.aftership.com/) (Correios e +1000 transportadoras)
+- **Resposta normalizada**, independente do provedor: status padronizado, flag `entregue`, última atualização e eventos ordenados
+- **Cache com TTL** e header `X-Cache: HIT | MISS`
+- **Consulta em lote** de até 20 códigos em paralelo, com remoção de duplicados e falhas isoladas por código
+- Timeout nas chamadas externas, com erros convertidos em `502`/`504`
+- Validação com **Zod**, **Helmet**, **CORS**, **rate limiting**, health check e **Swagger UI** em `/docs`
+- **Testes** com Jest + Supertest, incluindo o provedor AfterShip com `fetch` mockado
+- Sem dependência de HTTP client: usa o `fetch` nativo do Node 22
 
-## 💻 Pré-requisitos
-Antes de começar, verifique se você possui instalado em sua máquina:
+## 🧱 Stack
 
-- **Node.js** 20.x ou superior  
-- **npm** ou **yarn**  
+Node.js 22+ · Express 5 · Zod · Jest · Supertest · ESLint · Prettier · Docker
 
-Compatível com **Windows**, **Linux** e **macOS**
+## 📁 Estrutura
 
----
-
-## 🚀 Instalando a API de Rastreamento
-
-**1. Clone o repositório:**
-
-```bash
-git clone https://github.com/RobertoTheDev/api-rastreio.git
-cd api-rastreio
 ```
-**2. Instale as dependências:**
+src/
+├── app.js / server.js
+├── config/env.js            # configuração validada
+├── providers/
+│   ├── index.js             # escolhe o provedor pelo TRACKING_PROVIDER
+│   ├── mock.provider.js
+│   └── aftership.provider.js
+├── services/rastreio.service.js  # cache, normalização e consulta em lote
+├── utils/
+│   ├── codigoRastreio.js    # validação S10 e dígito verificador
+│   └── TtlCache.js
+├── controllers/ routes/ validators/ middlewares/
+└── docs/openapi.json
+tests/
+```
+
+## 🚀 Como rodar
+
 ```bash
+git clone https://github.com/robertofilho0/api-rastreamento.git
+cd api-rastreamento
 npm install
-```
-**3. Configure o arquivo .env:**
-```bash
-PORT=3000
-
-# Caso use AfterShip
-AFTERSHIP_API_KEY=sua_chave_api_aqui
-
-# Caso use Melhor Envio
-MELHORENVIO_API_KEY=sua_chave_api_aqui
-```
-**4. Inicie o servidor local:**
-```bash
+cp .env.example .env
 npm run dev
 ```
 
-## 📡 Endpoints da API:
+Ou com Docker: `docker compose up --build`.
 
-**📦 Rastreamento (/api/rastreio)**
+A API sobe em `http://localhost:3000` e a documentação em `http://localhost:3000/docs`.
 
-| Método | Endpoint            | Auth | Descrição                           |
-| ------ | ------------------- | ---- | ----------------------------------- |
-| GET    | /api/rastreio/:codigo   | ❌    | Retorna status de uma encomenda              |
+### Usando a AfterShip
 
-### ☕ Exemplos curl:
-**Rastrear encomenda (mock):**
+Crie uma conta gratuita, gere uma API key e configure o `.env`:
+
+```env
+TRACKING_PROVIDER=aftership
+AFTERSHIP_API_KEY=sua_chave
+```
+
+| Variável              | Padrão | Descrição                                   |
+| --------------------- | ------ | ------------------------------------------- |
+| `PORT`                | `3000` | Porta HTTP                                  |
+| `TRACKING_PROVIDER`   | `mock` | `mock` ou `aftership`                       |
+| `AFTERSHIP_API_KEY`   | —      | Obrigatória quando o provedor é `aftership` |
+| `PROVIDER_TIMEOUT_MS` | `5000` | Timeout da chamada externa                  |
+| `CACHE_TTL_SECONDS`   | `300`  | Tempo de cache (0 desativa)                 |
+
+## 📚 Endpoints
+
+| Método | Rota                            | Descrição                             |
+| ------ | ------------------------------- | ------------------------------------- |
+| `GET`  | `/api/rastreio/:codigo`         | Rastreia um objeto                    |
+| `POST` | `/api/rastreio/lote`            | Rastreia até 20 objetos               |
+| `GET`  | `/api/rastreio/:codigo/validar` | Só valida o código (formato e dígito) |
+| `GET`  | `/health`                       | Status e provedor ativo               |
+
+### Exemplos
 
 ```bash
-curl -X GET http://localhost:3000/api/rastreio/AA123456BR
+curl http://localhost:3000/api/rastreio/AA123456785BR
 ```
-**Resposta esperada (mock):**
 
 ```json
 {
-  "codigo": "AA123456BR",
-  "status": "Em trânsito",
-  "ultimaAtualizacao": "2025-08-20 14:33",
-  "historico": [
-    { "data": "2025-08-18", "local": "São Paulo/SP", "status": "Objeto postado" },
-    { "data": "2025-08-19", "local": "Curitiba/PR", "status": "Em trânsito" }
+  "codigo": "AA123456785BR",
+  "transportadora": "Correios (simulado)",
+  "status": "em_transito",
+  "descricao": "Objeto em trânsito - por favor aguarde",
+  "entregue": false,
+  "ultimaAtualizacao": "2026-11-19T14:00:00.000Z",
+  "eventos": [
+    {
+      "data": "2026-11-19T14:00:00.000Z",
+      "local": "Recife/PE",
+      "status": "em_transito",
+      "descricao": "Objeto em trânsito - por favor aguarde"
+    },
+    {
+      "data": "2026-11-18T10:00:00.000Z",
+      "local": "São Paulo/SP",
+      "status": "postado",
+      "descricao": "Objeto postado"
+    }
   ]
 }
 ```
 
-## 🔗 Integração com APIs Externas:
-🔗 Integração com APIs Externas
+```bash
+curl -X POST http://localhost:3000/api/rastreio/lote \
+  -H "Content-Type: application/json" \
+  -d '{"codigos":["AA123456785BR","QB473629155BR"]}'
+```
 
-Esta API pode se conectar a diferentes serviços de rastreamento:
+Código com dígito verificador errado:
 
-**Correios (SIGEP / SRO)** → oficial, mas exige contrato e integração via SOAP.
+```json
+{
+  "error": "Dados inválidos",
+  "details": [{ "campo": "codigo", "mensagem": "Dígito verificador inválido" }]
+}
+```
 
-**AfterShip**
- → suporte a +900 transportadoras (inclui Correios). Plano gratuito até 50 rastreamentos/mês.
+> No provedor `mock`, códigos cujos últimos 4 dígitos do número são `0000` (ex.: `AA123400004BR`) simulam um objeto não encontrado.
 
-**Melhor Envio**
- → API brasileira de fretes que permite rastreamento de múltiplos transportadores (inclui Correios).
+## 🧪 Testes
 
-Por padrão, o projeto inicia com **dados mockados.**
-Para usar integração real, configure sua **API_KEY** no .env e ajuste o serviço em services/rastreioService.js.
+```bash
+npm test
+npm run test:coverage
+npm run lint
+```
 
-## 🛠 Tecnologias utilizadas:
+## 📄 Licença
 
+MIT. Veja [LICENSE](LICENSE).
 
-- **Node.js** 20.x
+---
 
-- **Express**
-
-- **Axios** (requisições HTTP)
-
-- **Nodemon** (ambiente de desenvolvimento)
-
-- **MongoDB** (opcional, para persistência futura)
+Feito por [Roberto Filho](https://github.com/robertofilho0) · [LinkedIn](https://www.linkedin.com/in/roberto-filho-393b372b2/)
