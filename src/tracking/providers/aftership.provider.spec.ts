@@ -46,7 +46,7 @@ describe('AfterShipTrackingProvider', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(
-      (fetchMock.mock.calls[0][1]?.headers as Record<string, string>)[
+      (fetchMock.mock.calls[0][1]!.headers as Record<string, string>)[
         'as-api-key'
       ],
     ).toBe('chave-de-teste');

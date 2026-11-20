@@ -6,18 +6,17 @@ const S10_REGEX = /^([A-Z]{2})(\d{8})(\d)([A-Z]{2})$/;
 const PESOS = [8, 6, 4, 2, 3, 5, 9, 7];
 
 export function calcularDigito(numero: string): number {
-  const soma = [...numero].reduce((acc, d, i) => acc + Number(d) * PESOS[i], 0);
+  const soma = numero
+    .split('')
+    .reduce((acc, d, i) => acc + Number(d) * PESOS[i], 0);
   const resto = soma % 11;
   if (resto === 0) return 5;
   if (resto === 1) return 0;
   return 11 - resto;
 }
 
-export const normalizar = (codigo: unknown) =>
-  String(codigo ?? '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '');
+export const normalizar = (codigo: string | null | undefined) =>
+  (codigo ?? '').trim().toUpperCase().replace(/\s+/g, '');
 
 export type Validacao =
   | {
