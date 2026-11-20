@@ -1,144 +1,112 @@
 # 📦 API de Rastreamento de Encomendas
 
 [![CI](https://github.com/robertofilho0/api-rastreamento/actions/workflows/ci.yml/badge.svg)](https://github.com/robertofilho0/api-rastreamento/actions/workflows/ci.yml)
-![Node](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white)
-![Express](https://img.shields.io/badge/express-5-000000?logo=express)
+![NestJS](https://img.shields.io/badge/nestjs-12-E0234E?logo=nestjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/typescript-6-3178C6?logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/postgresql-17-4169E1?logo=postgresql&logoColor=white)
+![RabbitMQ](https://img.shields.io/badge/rabbitmq-4-FF6600?logo=rabbitmq&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-API REST para rastrear encomendas com **validação do código no padrão S10 dos Correios** (incluindo o dígito verificador), **provedores plugáveis**, **cache em memória** e **consulta em lote**.
+API de rastreamento de encomendas em **NestJS + TypeScript** com **validação do código no padrão S10 dos Correios**, **provedores plugáveis** (mock ou AfterShip), cache e **consulta em lote assíncrona processada por fila no RabbitMQ**.
 
-## ✨ Funcionalidades
+## ✨ Destaques
 
-- **Validação real do código de rastreio**: formato `AA123456785BR` e cálculo do dígito verificador (pesos 8-6-4-2-3-5-9-7, módulo 11). Códigos inválidos são barrados antes de qualquer chamada externa.
-- **Provedores plugáveis** (padrão _Strategy_):
-  - `mock` (padrão): histórico simulado e **determinístico**, ideal para desenvolvimento e demonstrações
-  - `aftership`: integração real com a [AfterShip](https://www.aftership.com/) (Correios e +1000 transportadoras)
-- **Resposta normalizada**, independente do provedor: status padronizado, flag `entregue`, última atualização e eventos ordenados
-- **Cache com TTL** e header `X-Cache: HIT | MISS`
-- **Consulta em lote** de até 20 códigos em paralelo, com remoção de duplicados e falhas isoladas por código
-- Timeout nas chamadas externas, com erros convertidos em `502`/`504`
-- Validação com **Zod**, **Helmet**, **CORS**, **rate limiting**, health check e **Swagger UI** em `/docs`
-- **Testes** com Jest + Supertest, incluindo o provedor AfterShip com `fetch` mockado
-- Sem dependência de HTTP client: usa o `fetch` nativo do Node 22
+- **Validação real do código de rastreio**: formato `AA123456785BR` e dígito verificador (pesos 8-6-4-2-3-5-9-7, módulo 11). Códigos inválidos são barrados antes de qualquer chamada externa.
+- **Lotes assíncronos com RabbitMQ**: `POST /api/lotes` grava o lote no PostgreSQL, publica `tracking.batch.requested` e responde `202 Accepted` na hora. Um worker (`@EventPattern`, ack manual) consulta os códigos de 5 em 5 e grava cada resultado. O cliente acompanha o progresso em `GET /api/lotes/:id`.
+- **Worker idempotente**: o lote só sai de `PENDING` uma vez (update condicional), então uma mensagem entregue duas vezes não reprocessa nada.
+- **Falhas isoladas**: um código com erro não derruba o lote. Cada item guarda sucesso, erro ou resultado.
+- **Provedores plugáveis (Strategy + DI)**: `mock` (padrão, histórico simulado e determinístico) ou `aftership` (integração real), escolhidos por variável de ambiente.
+- **Resposta normalizada**: status padronizado, flag `entregue` e eventos ordenados, independente do provedor.
+- **Cache com TTL** e header `X-Cache: HIT | MISS`. Timeout nas chamadas externas, com erros mapeados para `502` e `504`.
+- **Funciona sem broker**: sem `RABBITMQ_URL`, os lotes são processados em segundo plano no próprio processo.
 
 ## 🧱 Stack
 
-Node.js 22+ · Express 5 · Zod · Jest · Supertest · ESLint · Prettier · Docker
+NestJS 12 · TypeScript · PostgreSQL 17 · Prisma 7 · RabbitMQ 4 (`@nestjs/microservices`) · Zod · Swagger · Vitest · Supertest · Docker
+
+## 🏗️ Fluxo do lote
+
+```
+POST /api/lotes ──► grava lote + itens (PENDING) ──► publica tracking.batch.requested ──► 202 { id, statusUrl }
+                                                              │
+                                                              ▼
+                                            JobsConsumer (RabbitMQ, ack manual)
+                                              └─ JobsProcessor: PENDING → PROCESSING
+                                                   └─ consulta 5 códigos por vez → grava cada item
+                                                   └─ DONE (ou FAILED)
+
+GET /api/lotes/:id ──► { status, progress, processed, succeeded, resultados[] }
+```
 
 ## 📁 Estrutura
 
 ```
 src/
-├── app.js / server.js
-├── config/env.js            # configuração validada
-├── providers/
-│   ├── index.js             # escolhe o provedor pelo TRACKING_PROVIDER
-│   ├── mock.provider.js
-│   └── aftership.provider.js
-├── services/rastreio.service.js  # cache, normalização e consulta em lote
-├── utils/
-│   ├── codigoRastreio.js    # validação S10 e dígito verificador
-│   └── TtlCache.js
-├── controllers/ routes/ validators/ middlewares/
-└── docs/openapi.json
-tests/
+├── tracking/
+│   ├── codigo-rastreio.ts       # validação S10 e dígito verificador
+│   ├── providers/               # TrackingProvider (Strategy): mock e AfterShip
+│   ├── tracking.service.ts      # normalização e cache
+│   └── tracking.controller.ts
+├── jobs/                        # lotes: API, worker (consumer) e processamento
+├── messaging/                   # EventPublisher (RabbitMQ ou memória) e conexão do consumer
+├── prisma/ config/ common/ health/
+prisma/schema.prisma + migrations/
+test/
 ```
 
 ## 🚀 Como rodar
 
+### Com Docker (API + PostgreSQL + RabbitMQ)
+
 ```bash
 git clone https://github.com/robertofilho0/api-rastreamento.git
 cd api-rastreamento
+docker compose up --build
+```
+
+API em `http://localhost:3000/api`, Swagger em `http://localhost:3000/docs` e RabbitMQ em `http://localhost:15672` (guest/guest).
+
+### Localmente
+
+```bash
 npm install
 cp .env.example .env
-npm run dev
+npx prisma migrate deploy
+npm run start:dev
 ```
 
-Ou com Docker: `docker compose up --build`.
-
-A API sobe em `http://localhost:3000` e a documentação em `http://localhost:3000/docs`.
-
-### Usando a AfterShip
-
-Crie uma conta gratuita, gere uma API key e configure o `.env`:
-
-```env
-TRACKING_PROVIDER=aftership
-AFTERSHIP_API_KEY=sua_chave
-```
-
-| Variável              | Padrão | Descrição                                   |
-| --------------------- | ------ | ------------------------------------------- |
-| `PORT`                | `3000` | Porta HTTP                                  |
-| `TRACKING_PROVIDER`   | `mock` | `mock` ou `aftership`                       |
-| `AFTERSHIP_API_KEY`   | —      | Obrigatória quando o provedor é `aftership` |
-| `PROVIDER_TIMEOUT_MS` | `5000` | Timeout da chamada externa                  |
-| `CACHE_TTL_SECONDS`   | `300`  | Tempo de cache (0 desativa)                 |
+Para usar a AfterShip, defina `TRACKING_PROVIDER=aftership` e `AFTERSHIP_API_KEY`.
 
 ## 📚 Endpoints
 
-| Método | Rota                            | Descrição                             |
-| ------ | ------------------------------- | ------------------------------------- |
-| `GET`  | `/api/rastreio/:codigo`         | Rastreia um objeto                    |
-| `POST` | `/api/rastreio/lote`            | Rastreia até 20 objetos               |
-| `GET`  | `/api/rastreio/:codigo/validar` | Só valida o código (formato e dígito) |
-| `GET`  | `/health`                       | Status e provedor ativo               |
-
-### Exemplos
-
-```bash
-curl http://localhost:3000/api/rastreio/AA123456785BR
-```
-
-```json
-{
-  "codigo": "AA123456785BR",
-  "transportadora": "Correios (simulado)",
-  "status": "em_transito",
-  "descricao": "Objeto em trânsito - por favor aguarde",
-  "entregue": false,
-  "ultimaAtualizacao": "2026-11-19T14:00:00.000Z",
-  "eventos": [
-    {
-      "data": "2026-11-19T14:00:00.000Z",
-      "local": "Recife/PE",
-      "status": "em_transito",
-      "descricao": "Objeto em trânsito - por favor aguarde"
-    },
-    {
-      "data": "2026-11-18T10:00:00.000Z",
-      "local": "São Paulo/SP",
-      "status": "postado",
-      "descricao": "Objeto postado"
-    }
-  ]
-}
-```
+| Método | Rota                             | Descrição                                  |
+| ------ | -------------------------------- | ------------------------------------------ |
+| `GET`  | `/api/rastreio/:codigo`          | Rastreia um objeto (com cache)             |
+| `GET`  | `/api/rastreio/:codigo/validar`  | Só valida o código                         |
+| `POST` | `/api/lotes`                     | Agenda até 100 códigos (`202 Accepted`)    |
+| `GET`  | `/api/lotes/:id`                 | Status, progresso e resultados do lote     |
+| `GET`  | `/api/health`                    | Status da API e do banco                   |
 
 ```bash
-curl -X POST http://localhost:3000/api/rastreio/lote \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:3000/api/lotes -H "Content-Type: application/json" \
   -d '{"codigos":["AA123456785BR","QB473629155BR"]}'
+# → 202 { "id": "…", "status": "PENDING", "total": 2, "statusUrl": "/api/lotes/…" }
+
+curl http://localhost:3000/api/lotes/<id>
+# → { "status": "DONE", "progress": 100, "processed": 2, "succeeded": 2, "resultados": [ … ] }
 ```
 
-Código com dígito verificador errado:
-
-```json
-{
-  "error": "Dados inválidos",
-  "details": [{ "campo": "codigo", "mensagem": "Dígito verificador inválido" }]
-}
-```
-
-> No provedor `mock`, códigos cujos últimos 4 dígitos do número são `0000` (ex.: `AA123400004BR`) simulam um objeto não encontrado.
+> No provedor `mock`, códigos cujos 4 últimos dígitos do número são `0000` (ex.: `AA123400004BR`) simulam objeto não encontrado.
 
 ## 🧪 Testes
 
 ```bash
-npm test
-npm run test:coverage
+npm test             # unitários (validação S10 e provedor AfterShip com fetch mockado)
+npm run test:e2e     # e2e: requer DATABASE_URL; com RABBITMQ_URL processa os lotes pela fila
 npm run lint
 ```
+
+O CI sobe **PostgreSQL** e **RabbitMQ**, aplica as migrations, confere se elas batem com o `schema.prisma` e roda lint, testes e build.
 
 ## 📄 Licença
 
