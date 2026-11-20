@@ -130,7 +130,7 @@ Código com dígito verificador errado:
 }
 ```
 
-> No provedor `mock`, códigos cujos últimos 4 dígitos do número são `0000` (ex.: `AA123400005BR`) simulam um objeto não encontrado.
+> No provedor `mock`, códigos cujos últimos 4 dígitos do número são `0000` (ex.: `AA123400004BR`) simulam um objeto não encontrado.
 
 ## 🧪 Testes
 
